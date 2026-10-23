@@ -2,10 +2,62 @@ package sortingnetwork
 
 import (
 	"fmt"
+	"math"
 	"math/rand"
 	"slices"
 	"testing"
 )
+
+func TestSortingNetwork128RegisterSIMD(t *testing.T) {
+	inputs := [][]int32{
+		seq128(0, 1),
+		seq128(127, -1),
+		const128(4),
+		edge128(),
+	}
+	rng := rand.New(rand.NewSource(128))
+	for n := 0; n < 200; n++ {
+		row := make([]int32, 128)
+		for i := range row {
+			row[i] = int32(rng.Uint32())
+		}
+		inputs = append(inputs, row)
+	}
+	for _, in := range inputs {
+		got := append([]int32(nil), in...)
+		SortingNetwork128RegisterSIMD(got)
+		want := append([]int32(nil), in...)
+		slices.Sort(want)
+		if !slices.Equal(got, want) {
+			t.Fatalf("register128\nin  %v\ngot %v\nwant %v", in, got, want)
+		}
+	}
+}
+
+func seq128(start, step int32) []int32 {
+	row := make([]int32, 128)
+	for i := range row {
+		row[i] = start + int32(i)*step
+	}
+	return row
+}
+
+func const128(v int32) []int32 {
+	row := make([]int32, 128)
+	for i := range row {
+		row[i] = v
+	}
+	return row
+}
+
+func edge128() []int32 {
+	row := const128(0)
+	row[0] = math.MinInt32
+	row[1] = math.MaxInt32
+	row[2] = -1
+	row[127] = 1
+	return row
+}
 
 func BenchmarkSortingNetwork8RegisterSIMD(b *testing.B) {
 	size := 8
@@ -106,6 +158,32 @@ func BenchmarkSortingNetwork64RegisterSIMD(b *testing.B) {
 				}
 				fmt.Println()
 				b.Fatal("sort 64 register SIMD didn't sort")
+			}
+		}
+	})
+}
+
+func BenchmarkSortingNetwork128RegisterSIMD(b *testing.B) {
+	size := 128
+	b.Run(fmt.Sprintf("Size%d", size), func(b *testing.B) {
+		values := make([]int32, 128*62)
+		b.ResetTimer()
+		b.StopTimer()
+		for i := 0; i < b.N; i++ {
+			for j := range values {
+				values[j] = rand.Int31()
+			}
+			b.StartTimer()
+			for j := 0; j <= len(values)-128; j++ {
+				SortingNetwork128RegisterSIMD(values[j : j+128])
+			}
+			b.StopTimer()
+			if !slices.IsSorted(values[len(values)-128:]) {
+				for _, v := range values[len(values)-128:] {
+					fmt.Println(v)
+				}
+				fmt.Println()
+				b.Fatal("sort 128 register SIMD didn't sort")
 			}
 		}
 	})
